@@ -3,6 +3,7 @@ import { AppLayout } from './components/AppLayout';
 import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { SqlQuestionDetail } from './pages/SqlQuestionDetail';
 import { appRoutes } from './routes/appRoutes';
 
 export default function App() {
@@ -38,6 +39,16 @@ export default function App() {
           }
         />
       ))}
+      <Route
+        path="/sql-practice/:id"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <SqlQuestionDetail />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

@@ -1,29 +1,57 @@
 import { Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
-import { sqlCompanies, sqlQuestions, sqlTopics, type SqlDifficulty, type SqlQuestion } from '../data/sqlQuestions';
+import type { ApiQuestion, QuestionDifficulty } from '../services/api';
 import { useSqlPracticeState, type SqlQuestionState } from '../hooks/useSqlPracticeState';
 
 const QUESTIONS_PER_PAGE = 20;
-const difficulties: SqlDifficulty[] = ['Easy', 'Medium', 'Hard'];
+const difficulties: QuestionDifficulty[] = ['Easy', 'Medium', 'Hard'];
 
-const difficultyStyles: Record<SqlDifficulty, string> = {
+const difficultyStyles: Record<QuestionDifficulty, string> = {
   Easy: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
   Medium: 'bg-amber-50 text-amber-700 ring-amber-200',
   Hard: 'bg-rose-50 text-rose-700 ring-rose-200'
 };
 
-const progressStyles: Record<SqlDifficulty, string> = {
+const progressStyles: Record<QuestionDifficulty, string> = {
   Easy: 'bg-emerald-500',
   Medium: 'bg-amber-500',
   Hard: 'bg-rose-500'
 };
 
-function getDifficultyStats(difficulty: SqlDifficulty, questionState: Record<number, SqlQuestionState>) {
-  const questions = sqlQuestions.filter((question) => question.difficulty === difficulty);
-  const solved = questions.filter((question) => questionState[question.id]?.solved).length;
+function getDifficultyStats(difficulty: QuestionDifficulty, questions: ApiQuestion[], questionState: Record<number, SqlQuestionState>) {
+  const questionsByDifficulty = questions.filter((question) => question.difficulty === difficulty);
+  const solved = questionsByDifficulty.filter((question) => questionState[question.questionId]?.solved).length;
+  const percentage = questionsByDifficulty.length > 0 ? Math.round((solved / questionsByDifficulty.length) * 100) : 0;
+
+  return { total: questionsByDifficulty.length, solved, percentage };
+}
+
+function getFallbackState(): SqlQuestionState {
+  return {
+    solved: false,
+    favorite: false,
+    notes: '',
+    notesOpen: false
+  };
+}
+
+function getUniqueValues(values: string[]) {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function getQuestionState(questionState: Record<number, SqlQuestionState>, id: number) {
+  return questionState[id] ?? getFallbackState();
+}
+
+function getPracticeStats(questions: ApiQuestion[], questionState: Record<number, SqlQuestionState>) {
+  const solved = questions.filter((question) => questionState[question.questionId]?.solved).length;
   const percentage = questions.length > 0 ? Math.round((solved / questions.length) * 100) : 0;
 
-  return { total: questions.length, solved, percentage };
+  return {
+    solved,
+    remaining: questions.length - solved,
+    accuracy: percentage
+  };
 }
 
 function StatCard({ label, value, detail, accentClassName }: { label: string; value: string; detail: string; accentClassName: string }) {
@@ -74,7 +102,7 @@ function FilterSelect({
   );
 }
 
-function ProgressRow({ difficulty, solved, total, percentage }: { difficulty: SqlDifficulty; solved: number; total: number; percentage: number }) {
+function ProgressRow({ difficulty, solved, total, percentage }: { difficulty: QuestionDifficulty; solved: number; total: number; percentage: number }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-4 text-sm">
@@ -98,7 +126,7 @@ function QuestionCard({
   onToggleNotes,
   onNotesChange
 }: {
-  question: SqlQuestion;
+  question: ApiQuestion;
   state: SqlQuestionState;
   onSolvedChange: (id: number, solved: boolean) => void;
   onFavoriteChange: (id: number) => void;
@@ -110,7 +138,7 @@ function QuestionCard({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link className="text-base font-semibold text-slate-950 underline-offset-4 hover:underline" to={`/sql-practice/${question.id}`}>
+            <Link className="text-base font-semibold text-slate-950 underline-offset-4 hover:underline" to={`/sql-practice/${question.questionId}`}>
               {question.title}
             </Link>
             <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${difficultyStyles[question.difficulty]}`}>
@@ -118,7 +146,7 @@ function QuestionCard({
             </span>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600">
-            <span className="rounded-md bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{question.topic}</span>
+            <span className="rounded-md bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{question.category}</span>
             <span>{question.estimatedTime} min</span>
             <span className="hidden text-slate-300 sm:inline">|</span>
             <span>{question.companies.join(', ')}</span>
@@ -131,7 +159,7 @@ function QuestionCard({
               className="h-4 w-4 rounded border-slate-300 text-slate-950 focus:ring-slate-400"
               type="checkbox"
               checked={state.solved}
-              onChange={(event) => onSolvedChange(question.id, event.target.checked)}
+              onChange={(event) => onSolvedChange(question.questionId, event.target.checked)}
             />
             Solved
           </label>
@@ -143,7 +171,7 @@ function QuestionCard({
                 : 'border-slate-300 text-slate-700 hover:bg-slate-100'
             ].join(' ')}
             type="button"
-            onClick={() => onFavoriteChange(question.id)}
+            onClick={() => onFavoriteChange(question.questionId)}
             aria-pressed={state.favorite}
           >
             {state.favorite ? 'Favorited' : 'Favorite'}
@@ -151,15 +179,15 @@ function QuestionCard({
           <button
             className="h-10 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
             type="button"
-            onClick={() => onToggleNotes(question.id)}
+            onClick={() => onToggleNotes(question.questionId)}
             aria-expanded={state.notesOpen}
           >
             Notes
           </button>
           <Link
             className="flex h-10 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
-            to={`/sql-practice/${question.id}`}
-            onClick={() => onSolvedChange(question.id, true)}
+            to={`/sql-practice/${question.questionId}`}
+            onClick={() => onSolvedChange(question.questionId, true)}
           >
             Solve
           </Link>
@@ -174,7 +202,7 @@ function QuestionCard({
               className="mt-2 min-h-24 w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
               placeholder="Add query ideas, edge cases, or follow-up notes."
               value={state.notes}
-              onChange={(event) => onNotesChange(question.id, event.target.value)}
+              onChange={(event) => onNotesChange(question.questionId, event.target.value)}
             />
           </label>
         </div>
@@ -189,28 +217,28 @@ export function SqlPractice() {
   const [topicFilter, setTopicFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
-  const { questionState, setSolved, toggleFavorite, toggleNotes, setNotes } = useSqlPracticeState();
+  const { questions, questionState, isLoading, errorMessage, setSolved, toggleFavorite, toggleNotes, setNotes } = useSqlPracticeState();
 
-  const solvedCount = sqlQuestions.filter((question) => questionState[question.id]?.solved).length;
-  const remainingCount = sqlQuestions.length - solvedCount;
-  const accuracy = Math.round((solvedCount / sqlQuestions.length) * 100);
+  const topics = useMemo(() => getUniqueValues(questions.map((question) => question.category)), [questions]);
+  const companies = useMemo(() => getUniqueValues(questions.flatMap((question) => question.companies)), [questions]);
+  const { solved: solvedCount, remaining: remainingCount, accuracy } = getPracticeStats(questions, questionState);
 
   const filteredQuestions = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
 
-    return sqlQuestions.filter((question) => {
+    return questions.filter((question) => {
       const matchesSearch =
         normalizedSearch.length === 0 ||
         question.title.toLowerCase().includes(normalizedSearch) ||
-        question.topic.toLowerCase().includes(normalizedSearch) ||
+        question.category.toLowerCase().includes(normalizedSearch) ||
         question.companies.some((company) => company.toLowerCase().includes(normalizedSearch));
       const matchesDifficulty = difficultyFilter === 'All' || question.difficulty === difficultyFilter;
-      const matchesTopic = topicFilter === 'All' || question.topic === topicFilter;
+      const matchesTopic = topicFilter === 'All' || question.category === topicFilter;
       const matchesCompany = companyFilter === 'All' || question.companies.some((company) => company === companyFilter);
 
       return matchesSearch && matchesDifficulty && matchesTopic && matchesCompany;
     });
-  }, [companyFilter, difficultyFilter, searchQuery, topicFilter]);
+  }, [companyFilter, difficultyFilter, questions, searchQuery, topicFilter]);
 
   const totalPages = Math.max(Math.ceil(filteredQuestions.length / QUESTIONS_PER_PAGE), 1);
   const visibleQuestions = filteredQuestions.slice((currentPage - 1) * QUESTIONS_PER_PAGE, currentPage * QUESTIONS_PER_PAGE);
@@ -229,18 +257,29 @@ export function SqlPractice() {
           <div>
             <p className="text-sm font-medium uppercase text-slate-500">PrepAI</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">SQL Practice</h1>
-            <p className="mt-2 max-w-2xl text-slate-600">Practice high-signal SQL interview questions with saved local progress.</p>
+            <p className="mt-2 max-w-2xl text-slate-600">Practice high-signal SQL interview questions with saved progress.</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase text-slate-500">Question Bank</p>
-            <p className="mt-1 text-2xl font-semibold text-slate-950">{sqlQuestions.length}</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-950">{questions.length}</p>
           </div>
         </div>
       </section>
 
+      {isLoading ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-950" />
+          <p className="mt-3 text-sm font-medium text-slate-600">Loading SQL practice data...</p>
+        </div>
+      ) : null}
+
+      {errorMessage ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{errorMessage}</div>
+      ) : null}
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total SQL Questions" value={String(sqlQuestions.length)} detail="Curated SQL interview set" accentClassName="bg-cyan-500" />
-        <StatCard label="Solved" value={String(solvedCount)} detail="Persisted on this device" accentClassName="bg-emerald-500" />
+        <StatCard label="Total SQL Questions" value={String(questions.length)} detail="Curated SQL interview set" accentClassName="bg-cyan-500" />
+        <StatCard label="Solved" value={String(solvedCount)} detail="Synced to your account" accentClassName="bg-emerald-500" />
         <StatCard label="Remaining" value={String(remainingCount)} detail="Questions left to practice" accentClassName="bg-amber-500" />
         <StatCard label="Accuracy" value={`${accuracy}%`} detail="Solved share of this set" accentClassName="bg-rose-500" />
       </section>
@@ -248,7 +287,7 @@ export function SqlPractice() {
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-5 lg:grid-cols-3">
           {difficulties.map((difficulty) => (
-            <ProgressRow key={difficulty} difficulty={difficulty} {...getDifficultyStats(difficulty, questionState)} />
+            <ProgressRow key={difficulty} difficulty={difficulty} {...getDifficultyStats(difficulty, questions, questionState)} />
           ))}
         </div>
       </section>
@@ -272,12 +311,12 @@ export function SqlPractice() {
             options={difficulties}
             onChange={(value) => updateFilters(() => setDifficultyFilter(value))}
           />
-          <FilterSelect id="sql-topic-filter" label="Topic" value={topicFilter} options={sqlTopics} onChange={(value) => updateFilters(() => setTopicFilter(value))} />
+          <FilterSelect id="sql-topic-filter" label="Topic" value={topicFilter} options={topics} onChange={(value) => updateFilters(() => setTopicFilter(value))} />
           <FilterSelect
             id="sql-company-filter"
             label="Company"
             value={companyFilter}
-            options={sqlCompanies}
+            options={companies}
             onChange={(value) => updateFilters(() => setCompanyFilter(value))}
           />
         </div>
@@ -298,9 +337,9 @@ export function SqlPractice() {
           <div className="space-y-3">
             {visibleQuestions.map((question) => (
               <QuestionCard
-                key={question.id}
+                key={question.questionId}
                 question={question}
-                state={questionState[question.id]}
+                state={getQuestionState(questionState, question.questionId)}
                 onSolvedChange={setSolved}
                 onFavoriteChange={toggleFavorite}
                 onToggleNotes={toggleNotes}

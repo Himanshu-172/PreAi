@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { getFavorites, getProgress, getQuestions, type ApiProgress, type ApiQuestion } from '../services/api';
 
 type StatCardData = {
   label: string;
@@ -30,68 +32,7 @@ type QuickAction = {
   className: string;
 };
 
-const dashboardData = {
-  stats: [
-    {
-      label: 'DSA Questions Solved',
-      value: '128',
-      detail: '+12 this week',
-      accentClassName: 'bg-cyan-500'
-    },
-    {
-      label: 'SQL Questions Solved',
-      value: '46',
-      detail: '+6 this week',
-      accentClassName: 'bg-emerald-500'
-    },
-    {
-      label: 'Aptitude Progress',
-      value: '72%',
-      detail: '18 of 25 modules',
-      accentClassName: 'bg-amber-500'
-    },
-    {
-      label: 'Mock Interviews Completed',
-      value: '9',
-      detail: '2 scheduled next',
-      accentClassName: 'bg-rose-500'
-    }
-  ] satisfies StatCardData[],
-  weeklyProgress: [
-    { day: 'Mon', solved: 8 },
-    { day: 'Tue', solved: 12 },
-    { day: 'Wed', solved: 9 },
-    { day: 'Thu', solved: 15 },
-    { day: 'Fri', solved: 18 },
-    { day: 'Sat', solved: 11 },
-    { day: 'Sun', solved: 20 }
-  ] satisfies WeeklyProgressPoint[],
-  dailyGoal: {
-    solvedToday: 7,
-    target: 10
-  },
-  recentActivity: [
-    {
-      label: 'Last solved question',
-      value: 'Binary Tree Level Order Traversal',
-      timestamp: 'Today, 10:20 AM'
-    },
-    {
-      label: 'Last interview',
-      value: 'Frontend System Design Mock',
-      timestamp: 'Yesterday, 6:45 PM'
-    },
-    {
-      label: 'Resume uploaded',
-      value: 'Software Engineer Resume.pdf',
-      timestamp: 'Jul 8, 2026'
-    },
-    {
-      label: 'Login history',
-      value: 'Signed in from Chrome on macOS',
-      timestamp: 'Today, 9:04 AM'
-    }
-  ] satisfies ActivityItem[],
+const dashboardStaticData = {
   recommendedTasks: [
     {
       title: 'Solve 2 Graph problems',
@@ -112,6 +53,12 @@ const dashboardData = {
     { label: 'Resume Analyzer', path: '/resume-analyzer', className: 'bg-white text-slate-800 hover:bg-slate-100' },
     { label: 'Mock Interview', path: '/mock-interview', className: 'bg-white text-slate-800 hover:bg-slate-100' }
   ] satisfies QuickAction[]
+};
+
+type DashboardApiData = {
+  questions: ApiQuestion[];
+  progress: ApiProgress[];
+  favorites: ApiProgress[];
 };
 
 function getGreeting() {
@@ -141,6 +88,94 @@ function StatCard({ stat }: { stat: StatCardData }) {
       <p className="mt-3 text-sm text-slate-500">{stat.detail}</p>
     </article>
   );
+}
+
+function formatActivityTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(new Date(value));
+}
+
+function getQuestionTitle(questionMap: Map<string, ApiQuestion>, item: ApiProgress) {
+  return questionMap.get(`${item.module}:${item.questionId}`)?.title ?? `${item.module} question ${item.questionId}`;
+}
+
+function buildWeeklyProgress(progress: ApiProgress[]) {
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const today = new Date();
+  const dates = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    date.setHours(0, 0, 0, 0);
+    return date;
+  });
+
+  return dates.map((date) => {
+    const nextDate = new Date(date);
+    nextDate.setDate(date.getDate() + 1);
+
+    return {
+      day: days[date.getDay()],
+      solved: progress.filter((item) => {
+        if (!item.solvedAt) {
+          return false;
+        }
+
+        const solvedAt = new Date(item.solvedAt);
+        return solvedAt >= date && solvedAt < nextDate;
+      }).length
+    };
+  });
+}
+
+function buildDashboardStats(data: DashboardApiData) {
+  const totalSolved = data.progress.filter((item) => item.solved).length;
+  const remaining = Math.max(data.questions.length - totalSolved, 0);
+  const accuracy = data.questions.length > 0 ? Math.round((totalSolved / data.questions.length) * 100) : 0;
+
+  return [
+    {
+      label: 'Total Solved',
+      value: String(totalSolved),
+      detail: 'Across DSA, SQL, and Aptitude',
+      accentClassName: 'bg-cyan-500'
+    },
+    {
+      label: 'Remaining',
+      value: String(remaining),
+      detail: 'Questions left in the backend bank',
+      accentClassName: 'bg-amber-500'
+    },
+    {
+      label: 'Accuracy',
+      value: `${accuracy}%`,
+      detail: 'Solved share of all loaded questions',
+      accentClassName: 'bg-emerald-500'
+    },
+    {
+      label: 'Favorite Count',
+      value: String(data.favorites.length),
+      detail: 'Questions marked for review',
+      accentClassName: 'bg-rose-500'
+    }
+  ] satisfies StatCardData[];
+}
+
+function buildRecentActivity(data: DashboardApiData) {
+  const questionMap = new Map(data.questions.map((question) => [`${question.module}:${question.questionId}`, question]));
+
+  return data.progress
+    .filter((item) => item.solved || item.favorite || item.notes)
+    .sort((first, second) => new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime())
+    .slice(0, 5)
+    .map((item) => ({
+      label: item.solved ? `${item.module} solved` : item.favorite ? `${item.module} favorite` : `${item.module} notes`,
+      value: getQuestionTitle(questionMap, item),
+      timestamp: formatActivityTime(item.updatedAt)
+    }));
 }
 
 function WeeklyProgressChart({ data }: { data: WeeklyProgressPoint[] }) {
@@ -273,6 +308,49 @@ function QuickActions({ actions }: { actions: QuickAction[] }) {
 export function Dashboard() {
   const { user } = useAuth();
   const displayName = user?.name ?? 'there';
+  const [dashboardData, setDashboardData] = useState<DashboardApiData>({
+    questions: [],
+    progress: [],
+    favorites: []
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadDashboardData() {
+      setIsLoading(true);
+      setErrorMessage('');
+
+      try {
+        const [questions, progress, favorites] = await Promise.all([getQuestions(), getProgress(), getFavorites()]);
+
+        if (isActive) {
+          setDashboardData({ questions, progress, favorites });
+        }
+      } catch {
+        if (isActive) {
+          setErrorMessage('Unable to load dashboard statistics. Please try again.');
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadDashboardData();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const stats = useMemo(() => buildDashboardStats(dashboardData), [dashboardData]);
+  const weeklyProgress = useMemo(() => buildWeeklyProgress(dashboardData.progress), [dashboardData.progress]);
+  const recentActivity = useMemo(() => buildRecentActivity(dashboardData), [dashboardData]);
+  const solvedToday = weeklyProgress[weeklyProgress.length - 1]?.solved ?? 0;
 
   return (
     <div className="space-y-6">
@@ -285,26 +363,49 @@ export function Dashboard() {
             </h1>
             <p className="mt-2 max-w-2xl text-slate-600">Track your preparation momentum and jump back into the next useful task.</p>
           </div>
-          <p className="text-sm font-medium text-slate-500">Updated with dummy progress data</p>
+          <p className="text-sm font-medium text-slate-500">Updated from backend progress</p>
         </div>
       </section>
 
+      {isLoading ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-950" />
+          <p className="mt-3 text-sm font-medium text-slate-600">Loading dashboard statistics...</p>
+        </div>
+      ) : null}
+
+      {errorMessage ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{errorMessage}</div>
+      ) : null}
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {dashboardData.stats.map((stat) => (
+        {stats.map((stat) => (
           <StatCard key={stat.label} stat={stat} />
         ))}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-3">
-        <WeeklyProgressChart data={dashboardData.weeklyProgress} />
-        <DailyGoalCard solvedToday={dashboardData.dailyGoal.solvedToday} target={dashboardData.dailyGoal.target} />
+        <WeeklyProgressChart data={weeklyProgress} />
+        <DailyGoalCard solvedToday={solvedToday} target={10} />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <RecentActivity items={dashboardData.recentActivity} />
+        <RecentActivity
+          items={
+            recentActivity.length > 0
+              ? recentActivity
+              : [
+                  {
+                    label: 'Recent Activity',
+                    value: 'No backend activity yet',
+                    timestamp: 'Start solving questions to populate this list'
+                  }
+                ]
+          }
+        />
         <div className="space-y-6">
-          <RecommendedTasks tasks={dashboardData.recommendedTasks} />
-          <QuickActions actions={dashboardData.quickActions} />
+          <RecommendedTasks tasks={dashboardStaticData.recommendedTasks} />
+          <QuickActions actions={dashboardStaticData.quickActions} />
         </div>
       </section>
     </div>

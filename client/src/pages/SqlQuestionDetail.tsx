@@ -87,13 +87,18 @@ export function SqlQuestionDetail() {
   const { id } = useParams();
   const questionId = Number(id);
   const question = sqlQuestions.find((item) => item.id === questionId);
-  const { questionState, setSolved, toggleFavorite, setNotes } = useSqlPracticeState();
+  const { questionState, isLoading, errorMessage, setSolved, toggleFavorite, setNotes } = useSqlPracticeState();
 
   if (!question) {
     return <Navigate to="/sql-practice" replace />;
   }
 
-  const state = questionState[question.id];
+  const state = questionState[question.id] ?? {
+    solved: false,
+    favorite: false,
+    notes: '',
+    notesOpen: false
+  };
 
   return (
     <div className="space-y-6">
@@ -143,6 +148,17 @@ export function SqlQuestionDetail() {
           </div>
         </div>
       </section>
+
+      {isLoading ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-950" />
+          <p className="mt-3 text-sm font-medium text-slate-600">Loading saved progress...</p>
+        </div>
+      ) : null}
+
+      {errorMessage ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{errorMessage}</div>
+      ) : null}
 
       <DetailSection title="SQL Question">
         <p className="text-sm leading-6 text-slate-700">{question.prompt}</p>

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './components/AppLayout';
 import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
+import { AptitudeQuestionDetail } from './pages/AptitudeQuestionDetail';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { SqlQuestionDetail } from './pages/SqlQuestionDetail';
@@ -45,6 +46,16 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <SqlQuestionDetail />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/aptitude/:id"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <AptitudeQuestionDetail />
             </AppLayout>
           </ProtectedRoute>
         }

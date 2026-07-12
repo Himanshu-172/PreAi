@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { getAuthErrorMessage } from '../services/authService';
-import { uploadResume, type ApiResumeAnalysis } from '../services/api';
+import { analyzeResume, uploadResume, type ApiResumeAnalysis } from '../services/api';
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = '5 MB';
@@ -50,6 +50,7 @@ export function ResumeAnalyzer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [analysis, setAnalysis] = useState<ApiResumeAnalysis | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,6 +121,24 @@ export function ResumeAnalyzer() {
     }
   }
 
+  async function handleAnalyze() {
+    if (!analysis) {
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setErrorMessage('');
+
+    try {
+      const analyzedResume = await analyzeResume(analysis.id);
+      setAnalysis(analyzedResume);
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'Unable to analyze resume right now.'));
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -128,7 +147,7 @@ export function ResumeAnalyzer() {
             <p className="text-sm font-medium uppercase text-slate-500">PrepAI</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Resume Analyzer</h1>
             <p className="mt-3 max-w-2xl text-slate-600">
-              Upload a text-based PDF resume to prepare it for analysis. AI scoring and recommendations are not part of this milestone.
+              Upload a text-based PDF resume, extract its text, and request a structured AI analysis.
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -158,7 +177,7 @@ export function ResumeAnalyzer() {
               type="button"
               className="mt-6 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
+              disabled={isUploading || isAnalyzing}
             >
               Browse file
             </button>
@@ -177,7 +196,7 @@ export function ResumeAnalyzer() {
                   type="button"
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={removeSelectedFile}
-                  disabled={isUploading}
+                  disabled={isUploading || isAnalyzing}
                 >
                   Remove
                 </button>
@@ -194,7 +213,7 @@ export function ResumeAnalyzer() {
               type="button"
               className="rounded-md bg-cyan-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               onClick={handleUpload}
-              disabled={!selectedFile || isUploading}
+              disabled={!selectedFile || isUploading || isAnalyzing}
             >
               {isUploading ? 'Uploading...' : 'Upload resume'}
             </button>
@@ -207,7 +226,7 @@ export function ResumeAnalyzer() {
             <div>
               <p className="font-medium text-slate-500">Status</p>
               <p className="mt-1 font-semibold capitalize text-slate-950">
-                {isUploading ? 'uploading' : analysis ? analysis.status : 'waiting for upload'}
+                {isUploading ? 'uploading' : isAnalyzing ? 'analyzing' : analysis ? analysis.status : 'waiting for upload'}
               </p>
             </div>
             <div>
@@ -224,6 +243,12 @@ export function ResumeAnalyzer() {
                   <p className="font-medium text-slate-500">Uploaded</p>
                   <p className="mt-1 text-slate-700">{formatDate(analysis.createdAt)}</p>
                 </div>
+                {analysis.analyzedAt ? (
+                  <div>
+                    <p className="font-medium text-slate-500">Analyzed</p>
+                    <p className="mt-1 text-slate-700">{formatDate(analysis.analyzedAt)}</p>
+                  </div>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -239,11 +264,68 @@ export function ResumeAnalyzer() {
             </div>
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold capitalize text-emerald-700">{analysis.status}</span>
           </div>
+          <div className="mt-5 flex justify-end">
+            <button
+              type="button"
+              className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              onClick={handleAnalyze}
+              disabled={isAnalyzing || analysis.status === 'processing'}
+            >
+              {isAnalyzing ? 'Analyzing...' : analysis.analysis ? 'Analyze again' : 'Analyze Resume'}
+            </button>
+          </div>
           <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm font-medium text-slate-500">Extracted text preview</p>
             <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
               {extractedTextPreview || 'No preview available.'}
             </p>
+          </div>
+        </section>
+      ) : null}
+
+      {analysis?.analysis ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase text-cyan-700">Temporary analysis results</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-950">Structured Resume Analysis</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+              {[
+                { label: 'Overall', score: analysis.analysis.overallScore },
+                { label: 'ATS', score: analysis.analysis.atsScore },
+                { label: 'Content', score: analysis.analysis.contentScore },
+                { label: 'Formatting', score: analysis.analysis.formattingScore }
+              ].map(({ label, score }) => (
+                <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-950">{score}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {[
+              { title: 'Skills', items: analysis.analysis.skills },
+              { title: 'Missing Skills', items: analysis.analysis.missingSkills },
+              { title: 'Strengths', items: analysis.analysis.strengths },
+              { title: 'Weaknesses', items: analysis.analysis.weaknesses },
+              { title: 'Suggestions', items: analysis.analysis.suggestions }
+            ].map(({ title, items }) => (
+              <div key={title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <h3 className="font-semibold text-slate-950">{title}</h3>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+                  {items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+              <h3 className="font-semibold text-slate-950">Summary</h3>
+              <p className="mt-3 text-sm leading-6 text-slate-700">{analysis.analysis.summary}</p>
+            </div>
           </div>
         </section>
       ) : null}

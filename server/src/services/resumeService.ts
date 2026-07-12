@@ -2,6 +2,7 @@ import path from 'node:path';
 import mongoose from 'mongoose';
 import { PDFParse } from 'pdf-parse';
 import { ResumeAnalysis } from '../models/ResumeAnalysis.js';
+import { analyzeResumeWithAi } from './resumeAiService.js';
 
 export const RESUME_UPLOAD_FIELD = 'resume';
 export const RESUME_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -14,8 +15,25 @@ export type UploadedResumeFile = {
   buffer: Buffer;
 };
 
+export class ResumeServiceError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number
+  ) {
+    super(message);
+  }
+}
+
 function toObjectId(userId: string) {
   return new mongoose.Types.ObjectId(userId);
+}
+
+function toAnalysisObjectId(analysisId: string) {
+  if (!mongoose.Types.ObjectId.isValid(analysisId)) {
+    throw new ResumeServiceError('Invalid resume analysis ID', 400);
+  }
+
+  return new mongoose.Types.ObjectId(analysisId);
 }
 
 export function sanitizeResumeFileName(fileName: string) {
@@ -77,7 +95,7 @@ export async function createResumeAnalysis(userId: string, file: UploadedResumeF
     userId: toObjectId(userId),
     fileName: sanitizeResumeFileName(file.originalname),
     extractedText,
-    status: 'completed'
+    status: 'uploaded'
   });
 }
 
@@ -94,4 +112,115 @@ export async function getResumeAnalysisById(userId: string, analysisId: string) 
     _id: new mongoose.Types.ObjectId(analysisId),
     userId: toObjectId(userId)
   });
+}
+
+export async function analyzeResumeAnalysis(userId: string, analysisId: string) {
+  const analysisObjectId = toAnalysisObjectId(analysisId);
+  const userObjectId = toObjectId(userId);
+  const claimedAnalysis = await ResumeAnalysis.findOneAndUpdate(
+    {
+      _id: analysisObjectId,
+      userId: userObjectId,
+      status: {
+        $ne: 'processing'
+      }
+    },
+    {
+      $set: {
+        status: 'processing',
+        analysis: null,
+        analyzedAt: null
+      }
+    },
+    {
+      new: true
+    }
+  );
+
+  if (!claimedAnalysis) {
+    const existingAnalysis = await ResumeAnalysis.findOne({
+      _id: analysisObjectId,
+      userId: userObjectId
+    }).select('status');
+
+    if (existingAnalysis?.status === 'processing') {
+      throw new ResumeServiceError('Resume analysis is already processing', 409);
+    }
+
+    throw new ResumeServiceError('Resume analysis not found', 404);
+  }
+
+  if (!claimedAnalysis.extractedText?.trim()) {
+    await ResumeAnalysis.updateOne(
+      {
+        _id: analysisObjectId,
+        userId: userObjectId
+      },
+      {
+        $set: {
+          status: 'failed'
+        }
+      }
+    );
+
+    throw new ResumeServiceError('Resume does not have extracted text to analyze', 400);
+  }
+
+  try {
+    const aiAnalysis = await analyzeResumeWithAi(claimedAnalysis.extractedText);
+    const updatedAnalysis = await ResumeAnalysis.findOneAndUpdate(
+      {
+        _id: analysisObjectId,
+        userId: userObjectId
+      },
+      {
+        $set: {
+          analysis: aiAnalysis,
+          analyzedAt: new Date(),
+          status: 'completed'
+        }
+      },
+      {
+        new: true
+      }
+    );
+
+    if (!updatedAnalysis) {
+      throw new ResumeServiceError('Resume analysis not found', 404);
+    }
+
+    return updatedAnalysis;
+  } catch (error) {
+    await ResumeAnalysis.updateOne(
+      {
+        _id: analysisObjectId,
+        userId: userObjectId
+      },
+      {
+        $set: {
+          status: 'failed'
+        }
+      }
+    );
+
+    if (error instanceof ResumeServiceError) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message : 'Unable to analyze resume';
+
+    if (message.includes('not configured')) {
+      throw new ResumeServiceError('AI provider is not configured', 503);
+    }
+
+    if (message.includes('timed out')) {
+      throw new ResumeServiceError('AI provider request timed out', 504);
+    }
+
+    if (message.includes('malformed')) {
+      throw new ResumeServiceError('AI provider returned an invalid analysis response', 502);
+    }
+
+    throw new ResumeServiceError('Unable to analyze resume with the AI provider', 502);
+  }
 }

@@ -3,10 +3,12 @@ import { ZodError } from 'zod';
 import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import type { ResumeAnalysisDocument } from '../models/ResumeAnalysis.js';
 import {
+  analyzeResumeAnalysis,
   createResumeAnalysis,
   getResumeAnalysisById,
   listResumeAnalyses,
-  RESUME_MAX_FILE_SIZE_BYTES
+  RESUME_MAX_FILE_SIZE_BYTES,
+  ResumeServiceError
 } from '../services/resumeService.js';
 import { resumeAnalysisParamsSchema } from '../validators/resumeValidators.js';
 
@@ -29,6 +31,8 @@ function serializeResumeAnalysis(analysis: ResumeAnalysisDocument, includeExtrac
     id: analysis._id.toString(),
     fileName: analysis.fileName,
     status: analysis.status,
+    analysis: analysis.analysis,
+    analyzedAt: analysis.analyzedAt,
     ...(includeExtractedText ? { extractedText: analysis.extractedText } : {}),
     createdAt: analysis.createdAt,
     updatedAt: analysis.updatedAt
@@ -99,6 +103,31 @@ export async function getResumeAnalysis(request: AuthenticatedRequest, response:
       }
     });
   } catch (error) {
+    next(error);
+  }
+}
+
+export async function analyzeResume(request: AuthenticatedRequest, response: Response, next: NextFunction) {
+  try {
+    const parsedParams = resumeAnalysisParamsSchema.safeParse(request.params);
+
+    if (!parsedParams.success) {
+      sendValidationError(parsedParams.error, response);
+    }
+
+    const analysis = await analyzeResumeAnalysis(getUserId(request, response), parsedParams.data.id);
+
+    response.status(200).json({
+      success: true,
+      data: {
+        analysis: serializeResumeAnalysis(analysis)
+      }
+    });
+  } catch (error) {
+    if (error instanceof ResumeServiceError) {
+      response.status(error.statusCode);
+    }
+
     next(error);
   }
 }

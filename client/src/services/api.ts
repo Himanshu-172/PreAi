@@ -59,10 +59,25 @@ export type ApiProgress = {
 
 export type ResumeAnalysisStatus = 'uploaded' | 'processing' | 'completed' | 'failed';
 
+export type ApiResumeStructuredAnalysis = {
+  overallScore: number;
+  atsScore: number;
+  contentScore: number;
+  formattingScore: number;
+  skills: string[];
+  missingSkills: string[];
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+  summary: string;
+};
+
 export type ApiResumeAnalysis = {
   id: string;
   fileName: string;
   status: ResumeAnalysisStatus;
+  analysis?: ApiResumeStructuredAnalysis | null;
+  analyzedAt?: string | null;
   extractedText?: string;
   createdAt: string;
   updatedAt: string;
@@ -189,5 +204,10 @@ export async function getResumeHistory() {
 
 export async function getResumeAnalysis(id: string) {
   const response = await api.get<ApiEnvelope<{ analysis: ApiResumeAnalysis }>>(`/resume/${id}`);
+  return response.data.data.analysis;
+}
+
+export async function analyzeResume(id: string) {
+  const response = await api.post<ApiEnvelope<{ analysis: ApiResumeAnalysis }>>(`/resume/${id}/analyze`);
   return response.data.data.analysis;
 }

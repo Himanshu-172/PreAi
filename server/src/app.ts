@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import { errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/authRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
 import favoriteRoutes from './routes/favoriteRoutes.js';
 import healthRoutes from './routes/healthRoutes.js';
 import mockInterviewRoutes from './routes/mockInterviewRoutes.js';
@@ -43,6 +44,7 @@ app.use('/api/favorites', favoriteRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/resume', resumeRoutes);
 app.use('/api/mock-interviews', mockInterviewRoutes);
+app.use('/api/chat', chatRoutes);
 
 app.use(errorHandler);
 

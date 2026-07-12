@@ -95,9 +95,20 @@ type AiJsonAnalysisRequest = {
   ollamaSystemPrompt: string;
 };
 
+type AiTextMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
+
+type AiTextRequest = {
+  taskName: string;
+  messages: AiTextMessage[];
+};
+
 type ResumeAiProvider = {
   name: AiProviderName;
   analyze(request: AiJsonAnalysisRequest): Promise<unknown>;
+  generateText(request: AiTextRequest): Promise<string>;
 };
 
 function isDevelopmentDiagnosticsEnabled() {
@@ -207,6 +218,15 @@ function logSafeOllamaError(taskName: string, details: SafeOllamaErrorDetails) {
   logAiDiagnostic(`Ollama ${taskName} request failed`, details);
 }
 
+function logRawAiTextResponse(taskName: string, provider: AiProviderName, content: string) {
+  logAiDiagnostic('AI provider raw text response received', {
+    taskName,
+    provider,
+    contentLength: content.length,
+    preview: content.replace(/\s+/g, ' ').slice(0, 300)
+  });
+}
+
 function buildPrompt(resumeText: string) {
   const maxCharacters = getNumberEnv(
     'AI_RESUME_ANALYSIS_MAX_CHARS',
@@ -251,7 +271,8 @@ function parseJsonContent(content: string | null | undefined, taskName: string, 
     logAiDiagnostic('AI provider returned malformed JSON content', {
       taskName,
       provider,
-      contentLength: trimmedContent.length
+      contentLength: trimmedContent.length,
+      preview: trimmedContent.replace(/\s+/g, ' ').slice(0, 300)
     });
     throw new Error('AI provider returned malformed analysis JSON');
   }
@@ -315,6 +336,58 @@ async function analyzeWithOpenAi(request: AiJsonAnalysisRequest): Promise<unknow
 
     const providerResponse = (await response.json()) as OpenAiChatCompletionResponse;
     return parseOpenAiProviderContent(providerResponse, request.taskName);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateTextWithOpenAi(request: AiTextRequest): Promise<string> {
+  const apiKey = getRequiredEnv('OPENAI_API_KEY');
+  const model = process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL;
+  const timeoutMs = getNumberEnv('OPENAI_REQUEST_TIMEOUT_MS', DEFAULT_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(getOpenAiUrl(), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.4,
+        messages: request.messages
+      })
+    });
+
+    logAiDiagnostic('AI provider HTTP response received', {
+      taskName: request.taskName,
+      provider: 'openai',
+      status: response.status,
+      model
+    });
+
+    if (!response.ok) {
+      logSafeOpenAiError(request.taskName, await readSafeOpenAiErrorDetails(response, apiKey));
+      throw new Error('AI provider request failed');
+    }
+
+    const providerResponse = (await response.json()) as OpenAiChatCompletionResponse;
+    const content = providerResponse.choices?.[0]?.message?.content?.trim();
+
+    if (!content) {
+      logAiDiagnostic('AI provider returned empty text content', {
+        taskName: request.taskName,
+        provider: 'openai'
+      });
+      throw new Error('AI provider returned an empty text response');
+    }
+
+    logRawAiTextResponse(request.taskName, 'openai', content);
+    return content;
   } finally {
     clearTimeout(timeout);
   }
@@ -390,20 +463,93 @@ async function analyzeWithOllama(request: AiJsonAnalysisRequest): Promise<unknow
   }
 }
 
+async function generateTextWithOllama(request: AiTextRequest): Promise<string> {
+  const model = process.env.OLLAMA_MODEL ?? DEFAULT_OLLAMA_MODEL;
+  const timeoutMs = getNumberEnv('OLLAMA_REQUEST_TIMEOUT_MS', DEFAULT_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(getOllamaUrl(), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: request.messages,
+        options: {
+          temperature: 0.4
+        }
+      })
+    });
+
+    logAiDiagnostic('AI provider HTTP response received', {
+      taskName: request.taskName,
+      provider: 'ollama',
+      status: response.status,
+      model,
+      baseUrl: process.env.OLLAMA_BASE_URL ?? DEFAULT_OLLAMA_BASE_URL
+    });
+
+    if (!response.ok) {
+      logSafeOllamaError(request.taskName, await readSafeOllamaErrorDetails(response));
+      throw new Error('AI provider request failed');
+    }
+
+    const providerResponse = (await response.json()) as OllamaChatResponse;
+    const content = providerResponse.message?.content?.trim();
+
+    if (!content) {
+      logAiDiagnostic('AI provider returned empty text content', {
+        taskName: request.taskName,
+        provider: 'ollama'
+      });
+      throw new Error('AI provider returned an empty text response');
+    }
+
+    logRawAiTextResponse(request.taskName, 'ollama', content);
+    return content;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      logSafeOllamaError(request.taskName, {
+        type: 'timeout',
+        message: `Ollama request timed out after ${timeoutMs}ms`
+      });
+      throw error;
+    }
+
+    if (error instanceof TypeError) {
+      logSafeOllamaError(request.taskName, {
+        type: 'connection',
+        message: `Unable to connect to Ollama at ${process.env.OLLAMA_BASE_URL ?? DEFAULT_OLLAMA_BASE_URL}`
+      });
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function getAiProvider(): ResumeAiProvider {
   const providerName = (process.env.AI_PROVIDER ?? 'openai').toLowerCase();
 
   if (providerName === 'ollama') {
     return {
       name: 'ollama',
-      analyze: analyzeWithOllama
+      analyze: analyzeWithOllama,
+      generateText: generateTextWithOllama
     };
   }
 
   if (providerName === 'openai') {
     return {
       name: 'openai',
-      analyze: analyzeWithOpenAi
+      analyze: analyzeWithOpenAi,
+      generateText: generateTextWithOpenAi
     };
   }
 
@@ -487,5 +633,32 @@ export async function analyzeStructuredJsonWithAi(request: AiJsonAnalysisRequest
     }
 
     throw new Error('Unable to analyze with the AI provider');
+  }
+}
+
+export async function generateTextWithAi(request: AiTextRequest): Promise<{
+  provider: AiProviderName;
+  content: string;
+}> {
+  try {
+    const provider = getAiProvider();
+    logAiDiagnostic('AI provider selected', {
+      taskName: request.taskName,
+      provider: provider.name
+    });
+    return {
+      provider: provider.name,
+      content: await provider.generateText(request)
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('AI provider request timed out');
+    }
+
+    if (error instanceof Error && error.message.includes('not configured')) {
+      throw error;
+    }
+
+    throw new Error('Unable to generate text with the AI provider');
   }
 }

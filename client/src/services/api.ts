@@ -57,6 +57,17 @@ export type ApiProgress = {
   updatedAt: string;
 };
 
+export type ResumeAnalysisStatus = 'uploaded' | 'processing' | 'completed' | 'failed';
+
+export type ApiResumeAnalysis = {
+  id: string;
+  fileName: string;
+  status: ResumeAnalysisStatus;
+  extractedText?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type ApiEnvelope<T> = {
   success: boolean;
   data: T;
@@ -161,4 +172,22 @@ export async function saveNotes(payload: NotesPayload) {
 export async function updateNotes(questionId: number, payload: Omit<NotesPayload, 'questionId'>) {
   const response = await api.patch<ApiEnvelope<{ progress: ApiProgress }>>(`/notes/${questionId}`, payload);
   return response.data.data.progress;
+}
+
+export async function uploadResume(file: File) {
+  const formData = new FormData();
+  formData.append('resume', file);
+
+  const response = await api.post<ApiEnvelope<{ analysis: ApiResumeAnalysis }>>('/resume/upload', formData);
+  return response.data.data.analysis;
+}
+
+export async function getResumeHistory() {
+  const response = await api.get<ApiEnvelope<{ analyses: ApiResumeAnalysis[] }>>('/resume/history');
+  return response.data.data.analyses;
+}
+
+export async function getResumeAnalysis(id: string) {
+  const response = await api.get<ApiEnvelope<{ analysis: ApiResumeAnalysis }>>(`/resume/${id}`);
+  return response.data.data.analysis;
 }

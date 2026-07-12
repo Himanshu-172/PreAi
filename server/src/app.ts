@@ -7,6 +7,7 @@ import healthRoutes from './routes/healthRoutes.js';
 import noteRoutes from './routes/noteRoutes.js';
 import progressRoutes from './routes/progressRoutes.js';
 import questionRoutes from './routes/questionRoutes.js';
+import resumeRoutes from './routes/resumeRoutes.js';
 
 const app = express();
 const localhostOriginPattern = /^http:\/\/localhost:\d+$/;
@@ -39,6 +40,7 @@ app.use('/api/questions', questionRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/notes', noteRoutes);
+app.use('/api/resume', resumeRoutes);
 
 app.use(errorHandler);
 

@@ -59,6 +59,11 @@ export type ApiProgress = {
 
 export type ResumeAnalysisStatus = 'uploaded' | 'processing' | 'completed' | 'failed';
 
+export type MockInterviewType = 'Technical' | 'HR' | 'Mixed';
+export type MockInterviewCategory = 'DSA' | 'SQL' | 'General CS' | 'HR' | 'Mixed';
+export type MockInterviewDifficulty = QuestionDifficulty | 'Mixed';
+export type MockInterviewStatus = 'in_progress' | 'completed' | 'abandoned';
+
 export type ApiResumeStructuredAnalysis = {
   overallScore: number;
   atsScore: number;
@@ -79,6 +84,33 @@ export type ApiResumeAnalysis = {
   analysis?: ApiResumeStructuredAnalysis | null;
   analyzedAt?: string | null;
   extractedText?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ApiMockInterviewQuestion = {
+  index: number;
+  source: 'Question' | 'Static';
+  sourceKey: string;
+  category: string;
+  difficulty: QuestionDifficulty;
+  questionText: string;
+  userAnswer: string;
+  answeredAt: string | null;
+};
+
+export type ApiMockInterview = {
+  id: string;
+  interviewType: MockInterviewType;
+  category: MockInterviewCategory;
+  difficulty: MockInterviewDifficulty;
+  questionCount: 5 | 10;
+  currentQuestionIndex: number;
+  status: MockInterviewStatus;
+  startedAt: string;
+  completedAt: string | null;
+  answeredCount: number;
+  questions?: ApiMockInterviewQuestion[];
   createdAt: string;
   updatedAt: string;
 };
@@ -118,6 +150,18 @@ type NotesPayload = {
   module: PracticeModule;
   questionId: number;
   notes: string;
+};
+
+type CreateMockInterviewPayload = {
+  interviewType: MockInterviewType;
+  category?: MockInterviewCategory;
+  difficulty: MockInterviewDifficulty;
+  questionCount: 5 | 10;
+};
+
+type AnswerMockInterviewPayload = {
+  questionIndex: number;
+  answer: string;
 };
 
 function compactParams<T extends Record<string, unknown>>(params: T) {
@@ -210,4 +254,29 @@ export async function getResumeAnalysis(id: string) {
 export async function analyzeResume(id: string) {
   const response = await api.post<ApiEnvelope<{ analysis: ApiResumeAnalysis }>>(`/resume/${id}/analyze`);
   return response.data.data.analysis;
+}
+
+export async function createMockInterview(payload: CreateMockInterviewPayload) {
+  const response = await api.post<ApiEnvelope<{ interview: ApiMockInterview }>>('/mock-interviews', payload);
+  return response.data.data.interview;
+}
+
+export async function getMockInterviewHistory() {
+  const response = await api.get<ApiEnvelope<{ interviews: ApiMockInterview[] }>>('/mock-interviews');
+  return response.data.data.interviews;
+}
+
+export async function getMockInterview(id: string) {
+  const response = await api.get<ApiEnvelope<{ interview: ApiMockInterview }>>(`/mock-interviews/${id}`);
+  return response.data.data.interview;
+}
+
+export async function answerMockInterview(id: string, payload: AnswerMockInterviewPayload) {
+  const response = await api.patch<ApiEnvelope<{ interview: ApiMockInterview }>>(`/mock-interviews/${id}/answer`, payload);
+  return response.data.data.interview;
+}
+
+export async function completeMockInterview(id: string) {
+  const response = await api.post<ApiEnvelope<{ interview: ApiMockInterview }>>(`/mock-interviews/${id}/complete`);
+  return response.data.data.interview;
 }

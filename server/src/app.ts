@@ -4,6 +4,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/authRoutes.js';
 import favoriteRoutes from './routes/favoriteRoutes.js';
 import healthRoutes from './routes/healthRoutes.js';
+import mockInterviewRoutes from './routes/mockInterviewRoutes.js';
 import noteRoutes from './routes/noteRoutes.js';
 import progressRoutes from './routes/progressRoutes.js';
 import questionRoutes from './routes/questionRoutes.js';
@@ -41,6 +42,7 @@ app.use('/api/progress', progressRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/resume', resumeRoutes);
+app.use('/api/mock-interviews', mockInterviewRoutes);
 
 app.use(errorHandler);
 

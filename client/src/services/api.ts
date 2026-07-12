@@ -63,6 +63,7 @@ export type MockInterviewType = 'Technical' | 'HR' | 'Mixed';
 export type MockInterviewCategory = 'DSA' | 'SQL' | 'General CS' | 'HR' | 'Mixed';
 export type MockInterviewDifficulty = QuestionDifficulty | 'Mixed';
 export type MockInterviewStatus = 'in_progress' | 'completed' | 'abandoned';
+export type MockInterviewEvaluationStatus = 'not_started' | 'processing' | 'completed' | 'failed';
 
 export type ApiResumeStructuredAnalysis = {
   overallScore: number;
@@ -99,6 +100,26 @@ export type ApiMockInterviewQuestion = {
   answeredAt: string | null;
 };
 
+export type ApiMockInterviewQuestionFeedback = {
+  questionIndex: number;
+  score: number;
+  strengths: string[];
+  weaknesses: string[];
+  improvements: string[];
+  sampleBetterAnswer: string;
+};
+
+export type ApiMockInterviewEvaluation = {
+  overallScore: number;
+  communication: number;
+  technicalKnowledge: number;
+  problemSolving: number;
+  confidence: number;
+  summary: string;
+  recommendations: string[];
+  questionFeedback: ApiMockInterviewQuestionFeedback[];
+};
+
 export type ApiMockInterview = {
   id: string;
   interviewType: MockInterviewType;
@@ -107,6 +128,10 @@ export type ApiMockInterview = {
   questionCount: 5 | 10;
   currentQuestionIndex: number;
   status: MockInterviewStatus;
+  evaluationStatus: MockInterviewEvaluationStatus;
+  evaluationProvider: 'openai' | 'ollama' | null;
+  evaluation: ApiMockInterviewEvaluation | null;
+  evaluatedAt: string | null;
   startedAt: string;
   completedAt: string | null;
   answeredCount: number;
@@ -278,5 +303,10 @@ export async function answerMockInterview(id: string, payload: AnswerMockIntervi
 
 export async function completeMockInterview(id: string) {
   const response = await api.post<ApiEnvelope<{ interview: ApiMockInterview }>>(`/mock-interviews/${id}/complete`);
+  return response.data.data.interview;
+}
+
+export async function evaluateMockInterview(id: string) {
+  const response = await api.post<ApiEnvelope<{ interview: ApiMockInterview }>>(`/mock-interviews/${id}/evaluate`);
   return response.data.data.interview;
 }

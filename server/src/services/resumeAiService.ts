@@ -81,10 +81,36 @@ type SafeOllamaErrorDetails = {
   message?: string;
 };
 
+type JsonSchemaDefinition = {
+  name: string;
+  strict: true;
+  schema: unknown;
+};
+
+type AiJsonAnalysisRequest = {
+  taskName: string;
+  userPrompt: string;
+  jsonSchema: JsonSchemaDefinition;
+  openAiSystemPrompt: string;
+  ollamaSystemPrompt: string;
+};
+
 type ResumeAiProvider = {
   name: AiProviderName;
-  analyze(resumeText: string): Promise<unknown>;
+  analyze(request: AiJsonAnalysisRequest): Promise<unknown>;
 };
+
+function isDevelopmentDiagnosticsEnabled() {
+  return process.env.NODE_ENV !== 'production';
+}
+
+function logAiDiagnostic(message: string, details: Record<string, unknown>) {
+  if (!isDevelopmentDiagnosticsEnabled()) {
+    return;
+  }
+
+  console.error(message, details);
+}
 
 function getRequiredEnv(name: string) {
   const value = process.env[name];
@@ -147,8 +173,8 @@ async function readSafeOpenAiErrorDetails(response: Response, apiKey: string): P
   return details;
 }
 
-function logSafeOpenAiError(details: SafeOpenAiErrorDetails) {
-  console.error('OpenAI resume analysis request failed', details);
+function logSafeOpenAiError(taskName: string, details: SafeOpenAiErrorDetails) {
+  logAiDiagnostic(`OpenAI ${taskName} request failed`, details);
 }
 
 function sanitizeOllamaMessage(message: unknown) {
@@ -177,8 +203,8 @@ async function readSafeOllamaErrorDetails(response: Response): Promise<SafeOllam
   return details;
 }
 
-function logSafeOllamaError(details: SafeOllamaErrorDetails) {
-  console.error('Ollama resume analysis request failed', details);
+function logSafeOllamaError(taskName: string, details: SafeOllamaErrorDetails) {
+  logAiDiagnostic(`Ollama ${taskName} request failed`, details);
 }
 
 function buildPrompt(resumeText: string) {
@@ -203,10 +229,14 @@ function buildPrompt(resumeText: string) {
   ].join('\n');
 }
 
-function parseJsonContent(content: string | null | undefined) {
+function parseJsonContent(content: string | null | undefined, taskName: string, provider: AiProviderName) {
   const trimmedContent = content?.trim();
 
   if (!trimmedContent) {
+    logAiDiagnostic('AI provider returned empty JSON content', {
+      taskName,
+      provider
+    });
     throw new Error('AI provider returned an empty analysis response');
   }
 
@@ -218,20 +248,25 @@ function parseJsonContent(content: string | null | undefined) {
   try {
     return JSON.parse(jsonContent) as unknown;
   } catch {
+    logAiDiagnostic('AI provider returned malformed JSON content', {
+      taskName,
+      provider,
+      contentLength: trimmedContent.length
+    });
     throw new Error('AI provider returned malformed analysis JSON');
   }
 }
 
-function parseOpenAiProviderContent(response: OpenAiChatCompletionResponse) {
+function parseOpenAiProviderContent(response: OpenAiChatCompletionResponse, taskName: string) {
   const content = response.choices?.[0]?.message?.content;
-  return parseJsonContent(content);
+  return parseJsonContent(content, taskName, 'openai');
 }
 
-function parseOllamaProviderContent(response: OllamaChatResponse) {
-  return parseJsonContent(response.message?.content);
+function parseOllamaProviderContent(response: OllamaChatResponse, taskName: string) {
+  return parseJsonContent(response.message?.content, taskName, 'ollama');
 }
 
-async function analyzeWithOpenAi(resumeText: string): Promise<unknown> {
+async function analyzeWithOpenAi(request: AiJsonAnalysisRequest): Promise<unknown> {
   const apiKey = getRequiredEnv('OPENAI_API_KEY');
   const model = process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL;
   const timeoutMs = getNumberEnv('OPENAI_REQUEST_TIMEOUT_MS', DEFAULT_TIMEOUT_MS);
@@ -252,34 +287,40 @@ async function analyzeWithOpenAi(resumeText: string): Promise<unknown> {
         messages: [
           {
             role: 'system',
-            content:
-              'You are an expert technical recruiter and resume reviewer. Return only valid JSON that matches the provided schema.'
+            content: request.openAiSystemPrompt
           },
           {
             role: 'user',
-            content: buildPrompt(resumeText)
+            content: request.userPrompt
           }
         ],
         response_format: {
           type: 'json_schema',
-          json_schema: analysisJsonSchema
+          json_schema: request.jsonSchema
         }
       })
     });
 
+    logAiDiagnostic('AI provider HTTP response received', {
+      taskName: request.taskName,
+      provider: 'openai',
+      status: response.status,
+      model
+    });
+
     if (!response.ok) {
-      logSafeOpenAiError(await readSafeOpenAiErrorDetails(response, apiKey));
+      logSafeOpenAiError(request.taskName, await readSafeOpenAiErrorDetails(response, apiKey));
       throw new Error('AI provider request failed');
     }
 
     const providerResponse = (await response.json()) as OpenAiChatCompletionResponse;
-    return parseOpenAiProviderContent(providerResponse);
+    return parseOpenAiProviderContent(providerResponse, request.taskName);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function analyzeWithOllama(resumeText: string): Promise<unknown> {
+async function analyzeWithOllama(request: AiJsonAnalysisRequest): Promise<unknown> {
   const model = process.env.OLLAMA_MODEL ?? DEFAULT_OLLAMA_MODEL;
   const timeoutMs = getNumberEnv('OLLAMA_REQUEST_TIMEOUT_MS', DEFAULT_TIMEOUT_MS);
   const controller = new AbortController();
@@ -298,31 +339,38 @@ async function analyzeWithOllama(resumeText: string): Promise<unknown> {
         messages: [
           {
             role: 'system',
-            content:
-              'You are an expert technical recruiter and resume reviewer. Return only valid JSON with the requested fields. Do not include markdown.'
+            content: request.ollamaSystemPrompt
           },
           {
             role: 'user',
-            content: buildPrompt(resumeText)
+            content: request.userPrompt
           }
         ],
-        format: analysisJsonSchema.schema,
+        format: request.jsonSchema.schema,
         options: {
           temperature: 0.2
         }
       })
     });
 
+    logAiDiagnostic('AI provider HTTP response received', {
+      taskName: request.taskName,
+      provider: 'ollama',
+      status: response.status,
+      model,
+      baseUrl: process.env.OLLAMA_BASE_URL ?? DEFAULT_OLLAMA_BASE_URL
+    });
+
     if (!response.ok) {
-      logSafeOllamaError(await readSafeOllamaErrorDetails(response));
+      logSafeOllamaError(request.taskName, await readSafeOllamaErrorDetails(response));
       throw new Error('AI provider request failed');
     }
 
     const providerResponse = (await response.json()) as OllamaChatResponse;
-    return parseOllamaProviderContent(providerResponse);
+    return parseOllamaProviderContent(providerResponse, request.taskName);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      logSafeOllamaError({
+      logSafeOllamaError(request.taskName, {
         type: 'timeout',
         message: `Ollama request timed out after ${timeoutMs}ms`
       });
@@ -330,7 +378,7 @@ async function analyzeWithOllama(resumeText: string): Promise<unknown> {
     }
 
     if (error instanceof TypeError) {
-      logSafeOllamaError({
+      logSafeOllamaError(request.taskName, {
         type: 'connection',
         message: `Unable to connect to Ollama at ${process.env.OLLAMA_BASE_URL ?? DEFAULT_OLLAMA_BASE_URL}`
       });
@@ -365,13 +413,30 @@ function getAiProvider(): ResumeAiProvider {
 export async function analyzeResumeWithAi(resumeText: string): Promise<ResumeAiAnalysis> {
   try {
     const provider = getAiProvider();
-    const parsedAnalysis = resumeAiAnalysisSchema.safeParse(await provider.analyze(resumeText));
+    logAiDiagnostic('AI provider selected', {
+      taskName: 'resume analysis',
+      provider: provider.name
+    });
+    const parsedAnalysis = resumeAiAnalysisSchema.safeParse(
+      await provider.analyze({
+        taskName: 'resume analysis',
+        userPrompt: buildPrompt(resumeText),
+        jsonSchema: analysisJsonSchema,
+        openAiSystemPrompt:
+          'You are an expert technical recruiter and resume reviewer. Return only valid JSON that matches the provided schema.',
+        ollamaSystemPrompt:
+          'You are an expert technical recruiter and resume reviewer. Return only valid JSON with the requested fields. Do not include markdown.'
+      })
+    );
 
     if (!parsedAnalysis.success) {
-      console.error('AI provider returned invalid resume analysis structure', {
+      logAiDiagnostic('AI provider returned invalid resume analysis structure', {
         provider: provider.name,
         issueCount: parsedAnalysis.error.issues.length,
-        issuePaths: parsedAnalysis.error.issues.map((issue) => issue.path.join('.')).filter(Boolean)
+        issues: parsedAnalysis.error.issues.map((issue) => ({
+          path: issue.path.join('.'),
+          message: issue.message
+        }))
       });
       throw new Error('AI provider returned invalid analysis structure');
     }
@@ -391,5 +456,36 @@ export async function analyzeResumeWithAi(resumeText: string): Promise<ResumeAiA
     }
 
     throw new Error('Unable to analyze resume with the AI provider');
+  }
+}
+
+export async function analyzeStructuredJsonWithAi(request: AiJsonAnalysisRequest): Promise<{
+  provider: AiProviderName;
+  result: unknown;
+}> {
+  try {
+    const provider = getAiProvider();
+    logAiDiagnostic('AI provider selected', {
+      taskName: request.taskName,
+      provider: provider.name
+    });
+    return {
+      provider: provider.name,
+      result: await provider.analyze(request)
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('AI provider request timed out');
+    }
+
+    if (error instanceof Error && error.message.includes('not configured')) {
+      throw error;
+    }
+
+    if (error instanceof Error && (error.message.includes('malformed') || error.message.includes('invalid analysis'))) {
+      throw error;
+    }
+
+    throw new Error('Unable to analyze with the AI provider');
   }
 }

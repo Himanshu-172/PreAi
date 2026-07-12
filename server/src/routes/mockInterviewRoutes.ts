@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   answerMockInterview,
+  evaluateCompletedMockInterview,
   finishMockInterview,
   getMockInterview,
   getMockInterviewHistory,
@@ -17,5 +18,6 @@ router.get('/', getMockInterviewHistory);
 router.get('/:id', getMockInterview);
 router.patch('/:id/answer', answerMockInterview);
 router.post('/:id/complete', finishMockInterview);
+router.post('/:id/evaluate', evaluateCompletedMockInterview);
 
 export default router;

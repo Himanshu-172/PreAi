@@ -141,7 +141,9 @@ export async function createMockInterview(userId: string, input: CreateMockInter
 export async function listMockInterviews(userId: string) {
   return MockInterview.find({ userId: toObjectId(userId) })
     .sort({ createdAt: -1 })
-    .select('interviewType category difficulty questionCount currentQuestionIndex status startedAt completedAt createdAt updatedAt questions.userAnswer');
+    .select(
+      'interviewType category difficulty questionCount currentQuestionIndex status evaluationStatus evaluationProvider evaluation evaluatedAt startedAt completedAt createdAt updatedAt questions.userAnswer'
+    );
 }
 
 export async function getMockInterviewById(userId: string, interviewId: string) {

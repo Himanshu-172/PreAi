@@ -4,9 +4,11 @@ import {
   answerMockInterview,
   completeMockInterview,
   createMockInterview,
+  evaluateMockInterview,
   getMockInterview,
   getMockInterviewHistory,
   type ApiMockInterview,
+  type ApiMockInterviewQuestionFeedback,
   type MockInterviewCategory,
   type MockInterviewDifficulty,
   type MockInterviewStatus,
@@ -268,8 +270,118 @@ function InterviewSession({
   );
 }
 
-function CompletionSummary({ interview, onStartNew }: { interview: ApiMockInterview; onStartNew: () => void }) {
+function ScoreTile({ label, value }: { label: string; value: number }) {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950">{Math.round(value)}</p>
+    </article>
+  );
+}
+
+function FeedbackList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div>
+      <h4 className="text-sm font-semibold text-slate-950">{title}</h4>
+      <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-600">
+        {items.map((item) => (
+          <li key={item}>- {item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function QuestionFeedback({
+  feedback,
+  interview
+}: {
+  feedback: ApiMockInterviewQuestionFeedback;
+  interview: ApiMockInterview;
+}) {
+  const question = interview.questions?.find((item) => item.index === feedback.questionIndex);
+
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase text-cyan-700">Question {feedback.questionIndex + 1}</p>
+          <h3 className="mt-2 text-base font-semibold leading-6 text-slate-950">{question?.questionText ?? 'Saved answer feedback'}</h3>
+        </div>
+        <div className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">{Math.round(feedback.score)}/100</div>
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-3">
+        <FeedbackList title="Strengths" items={feedback.strengths} />
+        <FeedbackList title="Weaknesses" items={feedback.weaknesses} />
+        <FeedbackList title="Improvements" items={feedback.improvements} />
+      </div>
+
+      <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <p className="text-sm font-semibold text-emerald-900">Better answer</p>
+        <p className="mt-2 text-sm leading-6 text-emerald-900">{feedback.sampleBetterAnswer}</p>
+      </div>
+    </article>
+  );
+}
+
+function EvaluationResults({ interview }: { interview: ApiMockInterview }) {
+  const evaluation = interview.evaluation;
+
+  if (!evaluation) {
+    return null;
+  }
+
+  return (
+    <div className="mt-6 space-y-5">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-500">Overall score</p>
+            <p className="mt-2 text-4xl font-semibold tracking-tight text-slate-950">{Math.round(evaluation.overallScore)}/100</p>
+          </div>
+          <p className="max-w-3xl text-sm leading-6 text-slate-600">{evaluation.summary}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ScoreTile label="Communication" value={evaluation.communication} />
+        <ScoreTile label="Technical Knowledge" value={evaluation.technicalKnowledge} />
+        <ScoreTile label="Problem Solving" value={evaluation.problemSolving} />
+        <ScoreTile label="Confidence" value={evaluation.confidence} />
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-5">
+        <FeedbackList title="Recommendations" items={evaluation.recommendations} />
+      </div>
+
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold text-slate-950">Per Question Feedback</h3>
+        {evaluation.questionFeedback.map((feedback) => (
+          <QuestionFeedback key={feedback.questionIndex} feedback={feedback} interview={interview} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CompletionSummary({
+  interview,
+  isEvaluating,
+  onEvaluate,
+  onStartNew
+}: {
+  interview: ApiMockInterview;
+  isEvaluating: boolean;
+  onEvaluate: () => void;
+  onStartNew: () => void;
+}) {
   const answeredCount = getAnsweredCount(interview);
+  const hasEvaluation = interview.evaluationStatus === 'completed' && Boolean(interview.evaluation);
 
   return (
     <section className="rounded-lg border border-emerald-200 bg-white p-6 shadow-sm">
@@ -277,7 +389,7 @@ function CompletionSummary({ interview, onStartNew }: { interview: ApiMockInterv
         <div>
           <p className="text-sm font-semibold uppercase text-emerald-700">Interview completed</p>
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{interview.interviewType} Interview</h2>
-          <p className="mt-2 max-w-2xl text-slate-600">Your responses were saved. Evaluation and AI feedback are not part of this milestone.</p>
+          <p className="mt-2 max-w-2xl text-slate-600">Your responses were saved. Run AI evaluation when you are ready, or review saved feedback from previous sessions.</p>
         </div>
         <StatusBadge status={interview.status} />
       </div>
@@ -289,7 +401,32 @@ function CompletionSummary({ interview, onStartNew }: { interview: ApiMockInterv
         <SummaryCard label="Answered" value={`${answeredCount}/${interview.questionCount}`} detail="Saved text responses" accentClassName="bg-rose-500" />
       </div>
 
-      <div className="mt-6 flex justify-end">
+      {interview.evaluationStatus === 'processing' || isEvaluating ? (
+        <div className="mt-6 rounded-lg border border-cyan-200 bg-cyan-50 p-5 text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-cyan-200 border-t-cyan-700" />
+          <p className="mt-3 text-sm font-semibold text-cyan-900">Evaluating interview...</p>
+        </div>
+      ) : null}
+
+      {interview.evaluationStatus === 'failed' && !isEvaluating ? (
+        <div className="mt-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          Evaluation failed. You can retry the AI evaluation.
+        </div>
+      ) : null}
+
+      {hasEvaluation ? <EvaluationResults interview={interview} /> : null}
+
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+        {!hasEvaluation ? (
+          <button
+            type="button"
+            className="rounded-md bg-cyan-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-cyan-400"
+            onClick={onEvaluate}
+            disabled={isEvaluating || interview.evaluationStatus === 'processing'}
+          >
+            {isEvaluating || interview.evaluationStatus === 'processing' ? 'Evaluating...' : 'Evaluate Interview'}
+          </button>
+        ) : null}
         <button type="button" className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800" onClick={onStartNew}>
           Start New Interview
         </button>
@@ -410,6 +547,7 @@ export function MockInterview() {
   const [isStarting, setIsStarting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isEvaluating, setIsEvaluating] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [isSessionLoading, setIsSessionLoading] = useState(false);
 
@@ -562,6 +700,25 @@ export function MockInterview() {
     }
   }
 
+  async function handleEvaluateInterview() {
+    if (!activeInterview) {
+      return;
+    }
+
+    setIsEvaluating(true);
+    setErrorMessage('');
+
+    try {
+      const interview = await evaluateMockInterview(activeInterview.id);
+      setActiveInterview(interview);
+      await refreshHistoryAfterChange(interview);
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'Unable to evaluate the mock interview.'));
+    } finally {
+      setIsEvaluating(false);
+    }
+  }
+
   function handleStartNew() {
     setActiveInterview(null);
     setAnswer('');
@@ -615,7 +772,12 @@ export function MockInterview() {
       ) : null}
 
       {activeInterview?.status === 'completed' && !isSessionLoading ? (
-        <CompletionSummary interview={activeInterview} onStartNew={handleStartNew} />
+        <CompletionSummary
+          interview={activeInterview}
+          isEvaluating={isEvaluating}
+          onEvaluate={handleEvaluateInterview}
+          onStartNew={handleStartNew}
+        />
       ) : null}
 
       <InterviewHistory

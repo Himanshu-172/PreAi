@@ -11,6 +11,10 @@ import {
   MockInterviewServiceError
 } from '../services/mockInterviewService.js';
 import {
+  evaluateMockInterview,
+  MockInterviewEvaluationServiceError
+} from '../services/mockInterviewEvaluationService.js';
+import {
   answerMockInterviewSchema,
   createMockInterviewSchema,
   mockInterviewParamsSchema
@@ -43,6 +47,10 @@ function serializeMockInterview(interview: MockInterviewDocument, includeQuestio
     questionCount: interview.questionCount,
     currentQuestionIndex: interview.currentQuestionIndex,
     status: interview.status,
+    evaluationStatus: interview.evaluationStatus,
+    evaluationProvider: interview.evaluationProvider,
+    evaluation: interview.evaluation,
+    evaluatedAt: interview.evaluatedAt,
     startedAt: interview.startedAt,
     completedAt: interview.completedAt,
     answeredCount: getAnsweredCount(interview),
@@ -184,6 +192,31 @@ export async function finishMockInterview(request: AuthenticatedRequest, respons
     });
   } catch (error) {
     if (error instanceof MockInterviewServiceError) {
+      response.status(error.statusCode);
+    }
+
+    next(error);
+  }
+}
+
+export async function evaluateCompletedMockInterview(request: AuthenticatedRequest, response: Response, next: NextFunction) {
+  try {
+    const parsedParams = mockInterviewParamsSchema.safeParse(request.params);
+
+    if (!parsedParams.success) {
+      sendValidationError(parsedParams.error, response);
+    }
+
+    const interview = await evaluateMockInterview(getUserId(request, response), parsedParams.data.id);
+
+    response.status(200).json({
+      success: true,
+      data: {
+        interview: serializeMockInterview(interview)
+      }
+    });
+  } catch (error) {
+    if (error instanceof MockInterviewEvaluationServiceError) {
       response.status(error.statusCode);
     }
 

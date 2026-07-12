@@ -5,6 +5,7 @@ export const mockInterviewTypes = ['Technical', 'HR', 'Mixed'] as const;
 export const mockInterviewCategories = ['DSA', 'SQL', 'General CS', 'HR', 'Mixed'] as const;
 export const mockInterviewDifficulties = [...questionDifficulties, 'Mixed'] as const;
 export const mockInterviewStatuses = ['in_progress', 'completed', 'abandoned'] as const;
+export const mockInterviewEvaluationStatuses = ['not_started', 'processing', 'completed', 'failed'] as const;
 
 const mockInterviewQuestionSchema = new Schema(
   {
@@ -47,6 +48,98 @@ const mockInterviewQuestionSchema = new Schema(
     answeredAt: {
       type: Date,
       default: null
+    }
+  },
+  {
+    _id: false
+  }
+);
+
+const mockInterviewQuestionEvaluationSchema = new Schema(
+  {
+    questionIndex: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    score: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100
+    },
+    strengths: {
+      type: [String],
+      required: true,
+      default: []
+    },
+    weaknesses: {
+      type: [String],
+      required: true,
+      default: []
+    },
+    improvements: {
+      type: [String],
+      required: true,
+      default: []
+    },
+    sampleBetterAnswer: {
+      type: String,
+      required: true,
+      trim: true
+    }
+  },
+  {
+    _id: false
+  }
+);
+
+const mockInterviewEvaluationSchema = new Schema(
+  {
+    overallScore: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100
+    },
+    communication: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100
+    },
+    technicalKnowledge: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100
+    },
+    problemSolving: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100
+    },
+    confidence: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100
+    },
+    summary: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    recommendations: {
+      type: [String],
+      required: true,
+      default: []
+    },
+    questionFeedback: {
+      type: [mockInterviewQuestionEvaluationSchema],
+      required: true,
+      default: []
     }
   },
   {
@@ -105,6 +198,25 @@ const mockInterviewSchema = new Schema(
       default: Date.now
     },
     completedAt: {
+      type: Date,
+      default: null
+    },
+    evaluationStatus: {
+      type: String,
+      required: true,
+      enum: mockInterviewEvaluationStatuses,
+      default: 'not_started'
+    },
+    evaluationProvider: {
+      type: String,
+      enum: ['openai', 'ollama', null],
+      default: null
+    },
+    evaluation: {
+      type: mockInterviewEvaluationSchema,
+      default: null
+    },
+    evaluatedAt: {
       type: Date,
       default: null
     }

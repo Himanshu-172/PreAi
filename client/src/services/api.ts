@@ -140,6 +140,65 @@ export type ApiMockInterview = {
   updatedAt: string;
 };
 
+export type ApiAnalyticsActivity = {
+  type: string;
+  label: string;
+  detail: string;
+  timestamp: string | null;
+};
+
+export type ApiAnalytics = {
+  practice: {
+    dsaSolved: number;
+    sqlSolved: number;
+    aptitudeSolved: number;
+    overallSolved: number;
+    remaining: number;
+    accuracy: number;
+    totalQuestions: number;
+    totalsByModule: Record<PracticeModule, number>;
+    solvedByModule: Record<PracticeModule, number>;
+    difficultyBreakdown: Record<PracticeModule, Record<QuestionDifficulty, number>>;
+  };
+  resume: {
+    totalAnalyses: number;
+    averageAtsScore: number;
+    bestAtsScore: number;
+    latestResumeAnalysis: {
+      id: string;
+      fileName: string;
+      status: ResumeAnalysisStatus;
+      atsScore: number | null;
+      analyzedAt: string | null;
+      createdAt: string | null;
+    } | null;
+  };
+  mockInterview: {
+    totalInterviews: number;
+    completedInterviews: number;
+    averageOverallScore: number;
+    averageCommunication: number;
+    averageTechnical: number;
+    averageConfidence: number;
+  };
+  aiChat: {
+    totalConversations: number;
+    totalMessages: number;
+    latestConversation: {
+      id: string;
+      title: string;
+      messageCount: number;
+      updatedAt: string | null;
+    } | null;
+  };
+  overall: {
+    totalActivity: number;
+    overallProgress: number;
+    favoriteCount: number;
+    recentActivityTimeline: ApiAnalyticsActivity[];
+  };
+};
+
 type ApiEnvelope<T> = {
   success: boolean;
   data: T;
@@ -198,6 +257,11 @@ export async function getQuestions(query: QuestionQuery = {}) {
     params: compactParams(query)
   });
   return response.data.data.questions;
+}
+
+export async function getAnalytics() {
+  const response = await api.get<ApiEnvelope<{ analytics: ApiAnalytics }>>('/analytics');
+  return response.data.data.analytics;
 }
 
 export async function getQuestion(id: number) {

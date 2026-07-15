@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { errorHandler } from './middleware/errorHandler.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import favoriteRoutes from './routes/favoriteRoutes.js';
@@ -38,6 +39,7 @@ app.use(express.json());
 
 app.use('/api/auth', authRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/favorites', favoriteRoutes);

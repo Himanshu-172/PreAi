@@ -1,11 +1,9 @@
 import '../src/config/env.js';
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import mongoose from 'mongoose';
 import { connectDatabase } from '../src/config/database.js';
 import { Question, questionDifficulties, questionModules } from '../src/models/Question.js';
 import { aptitudeQuestions } from '../../client/src/data/aptitudeQuestions.ts';
+import { dsaQuestions } from '../../client/src/data/dsaQuestions.ts';
 import { sqlQuestions } from '../../client/src/data/sqlQuestions.ts';
 
 type QuestionModule = (typeof questionModules)[number];
@@ -29,79 +27,6 @@ type DsaQuestion = {
   companies: string[];
   estimatedTime: number;
 };
-
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const dsaPracticePath = resolve(scriptDir, '../../client/src/pages/DsaPractice.tsx');
-
-function findMatchingBracket(source: string, openBracketIndex: number) {
-  let depth = 0;
-  let quote: '"' | "'" | '`' | null = null;
-  let escaped = false;
-
-  for (let index = openBracketIndex; index < source.length; index += 1) {
-    const character = source[index];
-
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === '\\') {
-        escaped = true;
-      } else if (character === quote) {
-        quote = null;
-      }
-
-      continue;
-    }
-
-    if (character === '"' || character === "'" || character === '`') {
-      quote = character;
-      continue;
-    }
-
-    if (character === '[') {
-      depth += 1;
-    } else if (character === ']') {
-      depth -= 1;
-
-      if (depth === 0) {
-        return index;
-      }
-    }
-  }
-
-  throw new Error('Could not find the end of the DSA questions array');
-}
-
-async function loadDsaQuestions() {
-  const source = await readFile(dsaPracticePath, 'utf8');
-  const declarationIndex = source.indexOf('const dsaQuestions');
-
-  if (declarationIndex === -1) {
-    throw new Error('Could not find dsaQuestions in DsaPractice.tsx');
-  }
-
-  const assignmentIndex = source.indexOf('=', declarationIndex);
-
-  if (assignmentIndex === -1) {
-    throw new Error('Could not find the DSA questions assignment');
-  }
-
-  const arrayStart = source.indexOf('[', assignmentIndex);
-
-  if (arrayStart === -1) {
-    throw new Error('Could not find the DSA questions array start');
-  }
-
-  const arrayEnd = findMatchingBracket(source, arrayStart);
-  const arrayLiteral = source.slice(arrayStart, arrayEnd + 1);
-  const questions = Function(`"use strict"; return (${arrayLiteral});`)() as DsaQuestion[];
-
-  if (!Array.isArray(questions)) {
-    throw new Error('DSA questions did not evaluate to an array');
-  }
-
-  return questions;
-}
 
 function toSeedQuestions(module: 'DSA', questions: DsaQuestion[]): SeedQuestion[];
 function toSeedQuestions(module: 'SQL', questions: typeof sqlQuestions): SeedQuestion[];
@@ -136,7 +61,6 @@ function assertNoDuplicateSeedKeys(questions: SeedQuestion[]) {
 }
 
 async function seedQuestions() {
-  const dsaQuestions = await loadDsaQuestions();
   const questions = [
     ...toSeedQuestions('DSA', dsaQuestions),
     ...toSeedQuestions('SQL', sqlQuestions),

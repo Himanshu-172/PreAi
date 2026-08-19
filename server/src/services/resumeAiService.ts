@@ -535,7 +535,13 @@ async function generateTextWithOllama(request: AiTextRequest): Promise<string> {
 }
 
 function getAiProvider(): ResumeAiProvider {
-  const providerName = (process.env.AI_PROVIDER ?? 'openai').toLowerCase();
+  const configuredProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
+
+  if (!configuredProvider && process.env.NODE_ENV === 'production') {
+    throw new Error('AI_PROVIDER is not configured');
+  }
+
+  const providerName = configuredProvider ?? 'ollama';
 
   if (providerName === 'ollama') {
     return {

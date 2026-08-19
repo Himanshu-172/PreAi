@@ -26,14 +26,13 @@ function getUserId(request: AuthenticatedRequest, response: Response) {
   return request.user.id;
 }
 
-function serializeResumeAnalysis(analysis: ResumeAnalysisDocument, includeExtractedText = true) {
+function serializeResumeAnalysis(analysis: ResumeAnalysisDocument) {
   return {
     id: analysis._id.toString(),
     fileName: analysis.fileName,
     status: analysis.status,
     analysis: analysis.analysis,
     analyzedAt: analysis.analyzedAt,
-    ...(includeExtractedText ? { extractedText: analysis.extractedText } : {}),
     createdAt: analysis.createdAt,
     updatedAt: analysis.updatedAt
   };
@@ -73,7 +72,7 @@ export async function getResumeHistory(request: AuthenticatedRequest, response: 
     response.status(200).json({
       success: true,
       data: {
-        analyses: analyses.map((analysis) => serializeResumeAnalysis(analysis, false))
+        analyses: analyses.map(serializeResumeAnalysis)
       }
     });
   } catch (error) {

@@ -1,7 +1,37 @@
 import axios from 'axios';
 
+function getApiBaseUrl() {
+  const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL;
+
+  if (import.meta.env.PROD) {
+    if (!configuredBaseUrl) {
+      throw new Error('VITE_API_BASE_URL must be configured for production builds');
+    }
+
+    let parsedUrl: URL;
+
+    try {
+      parsedUrl = new URL(configuredBaseUrl);
+    } catch {
+      throw new Error('VITE_API_BASE_URL must be an absolute HTTP or HTTPS URL for production builds');
+    }
+
+    const blockedProductionHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]', '::1']);
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol) || blockedProductionHosts.has(parsedUrl.hostname)) {
+      throw new Error('VITE_API_BASE_URL must be a non-local HTTP or HTTPS URL for production builds');
+    }
+  }
+
+  if (configuredBaseUrl) {
+    return configuredBaseUrl;
+  }
+
+  return 'http://localhost:5000/api';
+}
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000/api'
+  baseURL: getApiBaseUrl()
 });
 
 export const AUTH_TOKEN_KEY = 'prepai.authToken';

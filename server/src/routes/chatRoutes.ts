@@ -7,12 +7,13 @@ import {
   renameChat
 } from '../controllers/chatController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
+import { aiChatRateLimiter } from '../middleware/rateLimiters.js';
 
 const router = Router();
 
 router.use(authenticate);
 
-router.post('/', createChatMessage);
+router.post('/', aiChatRateLimiter, createChatMessage);
 router.get('/', getChatHistory);
 router.get('/:id', getChatConversation);
 router.patch('/:id', renameChat);

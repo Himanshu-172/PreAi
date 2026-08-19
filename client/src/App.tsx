@@ -40,6 +40,7 @@ export default function App() {
           }
         />
       ))}
+      <Route path="/analytics" element={<Navigate to="/dashboard" replace />} />
       <Route
         path="/sql-practice/:id"
         element={

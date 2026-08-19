@@ -1,5 +1,4 @@
 import { AiChatbot } from '../pages/AiChatbot';
-import { Analytics } from '../pages/Analytics';
 import { Aptitude } from '../pages/Aptitude';
 import { Dashboard } from '../pages/Dashboard';
 import { DsaPractice } from '../pages/DsaPractice';
@@ -22,6 +21,5 @@ export const appRoutes: AppRoute[] = [
   { path: '/resume-analyzer', label: 'Resume Analyzer', element: ResumeAnalyzer },
   { path: '/mock-interview', label: 'Mock Interview', element: MockInterview },
   { path: '/ai-chatbot', label: 'AI Chatbot', element: AiChatbot },
-  { path: '/analytics', label: 'Analytics', element: Analytics },
   { path: '/profile', label: 'Profile', element: Profile }
 ];

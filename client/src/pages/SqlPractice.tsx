@@ -216,6 +216,8 @@ export function SqlPractice() {
   const [difficultyFilter, setDifficultyFilter] = useState('All');
   const [topicFilter, setTopicFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [sortOption, setSortOption] = useState('Newest');
   const [currentPage, setCurrentPage] = useState(1);
   const { questions, questionState, isLoading, errorMessage, setSolved, toggleFavorite, toggleNotes, setNotes } = useSqlPracticeState();
 
@@ -227,6 +229,7 @@ export function SqlPractice() {
     const normalizedSearch = searchQuery.trim().toLowerCase();
 
     return questions.filter((question) => {
+      const state = getQuestionState(questionState, question.questionId);
       const matchesSearch =
         normalizedSearch.length === 0 ||
         question.title.toLowerCase().includes(normalizedSearch) ||
@@ -235,10 +238,23 @@ export function SqlPractice() {
       const matchesDifficulty = difficultyFilter === 'All' || question.difficulty === difficultyFilter;
       const matchesTopic = topicFilter === 'All' || question.category === topicFilter;
       const matchesCompany = companyFilter === 'All' || question.companies.some((company) => company === companyFilter);
+      const matchesStatus =
+        statusFilter === 'All' ||
+        (statusFilter === 'Solved' && state.solved) ||
+        (statusFilter === 'Unsolved' && !state.solved) ||
+        (statusFilter === 'Favorites' && state.favorite);
 
-      return matchesSearch && matchesDifficulty && matchesTopic && matchesCompany;
+      return matchesSearch && matchesDifficulty && matchesTopic && matchesCompany && matchesStatus;
+    }).sort((first, second) => {
+      if (sortOption === 'Alphabetical') {
+        return first.title.localeCompare(second.title);
+      }
+
+      const firstDate = new Date(first.createdAt).getTime();
+      const secondDate = new Date(second.createdAt).getTime();
+      return sortOption === 'Oldest' ? firstDate - secondDate : secondDate - firstDate;
     });
-  }, [companyFilter, difficultyFilter, questions, searchQuery, topicFilter]);
+  }, [companyFilter, difficultyFilter, questionState, questions, searchQuery, sortOption, statusFilter, topicFilter]);
 
   const totalPages = Math.max(Math.ceil(filteredQuestions.length / QUESTIONS_PER_PAGE), 1);
   const visibleQuestions = filteredQuestions.slice((currentPage - 1) * QUESTIONS_PER_PAGE, currentPage * QUESTIONS_PER_PAGE);
@@ -293,7 +309,7 @@ export function SqlPractice() {
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(0,1fr))]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))]">
           <label className="block">
             <span className="text-xs font-semibold uppercase text-slate-500">Search</span>
             <input
@@ -318,6 +334,20 @@ export function SqlPractice() {
             value={companyFilter}
             options={companies}
             onChange={(value) => updateFilters(() => setCompanyFilter(value))}
+          />
+          <FilterSelect
+            id="sql-status-filter"
+            label="Status"
+            value={statusFilter}
+            options={['Solved', 'Unsolved', 'Favorites']}
+            onChange={(value) => updateFilters(() => setStatusFilter(value))}
+          />
+          <FilterSelect
+            id="sql-sort-filter"
+            label="Sort"
+            value={sortOption}
+            options={['Newest', 'Oldest', 'Alphabetical']}
+            onChange={(value) => updateFilters(() => setSortOption(value))}
           />
         </div>
       </section>
@@ -350,7 +380,7 @@ export function SqlPractice() {
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center">
             <p className="text-sm font-semibold text-slate-950">No questions match the current filters.</p>
-            <p className="mt-1 text-sm text-slate-500">Adjust the search, topic, company, or difficulty filters.</p>
+            <p className="mt-1 text-sm text-slate-500">Adjust the search, topic, company, difficulty, or status filters.</p>
           </div>
         )}
 

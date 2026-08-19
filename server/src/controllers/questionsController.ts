@@ -17,12 +17,13 @@ export async function getQuestions(request: AuthenticatedRequest, response: Resp
       sendValidationError(parsedQuery.error, response);
     }
 
-    const questions = await listQuestions(parsedQuery.data);
+    const { questions, pagination } = await listQuestions(parsedQuery.data);
 
     response.status(200).json({
       success: true,
       data: {
-        questions
+        questions,
+        pagination
       }
     });
   } catch (error) {

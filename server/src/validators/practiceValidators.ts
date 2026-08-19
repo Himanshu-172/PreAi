@@ -11,8 +11,17 @@ export const questionQuerySchema = z.object({
   module: moduleSchema.optional(),
   search: z.string().trim().min(1).optional(),
   difficulty: z.enum(['Easy', 'Medium', 'Hard']).optional(),
+  topic: z.string().trim().min(1).optional(),
   category: z.string().trim().min(1).optional(),
-  company: z.string().trim().min(1).optional()
+  company: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int('Page must be an integer').positive('Page must be positive').optional(),
+  limit: z.coerce
+    .number()
+    .int('Limit must be an integer')
+    .positive('Limit must be positive')
+    .max(100, 'Limit cannot exceed 100')
+    .optional(),
+  sort: z.enum(['newest', 'oldest', 'alphabetical']).optional()
 });
 
 export const questionParamsSchema = z.object({

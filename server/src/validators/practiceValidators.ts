@@ -28,6 +28,14 @@ export const questionParamsSchema = z.object({
   id: questionIdSchema
 });
 
+export const codeLanguageSchema = z.enum(['java', 'python', 'cpp', 'javascript']);
+
+export const codeExecutionBodySchema = z.object({
+  language: codeLanguageSchema,
+  code: z.string().trim().min(1, 'Code is required').max(50000, 'Code must be 50000 characters or fewer'),
+  testCaseIds: z.array(z.string().trim().min(1)).max(20).optional()
+});
+
 export const moduleQuerySchema = z.object({
   module: moduleSchema.optional()
 });

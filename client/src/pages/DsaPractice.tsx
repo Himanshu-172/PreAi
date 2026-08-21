@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { dsaQuestions, type DsaDifficulty } from '../data/dsaQuestions';
 import type { ApiQuestion } from '../services/api';
 import { usePracticeState } from '../hooks/usePracticeState';
@@ -210,13 +211,12 @@ function QuestionCard({
           >
             Notes
           </button>
-          <button
+          <Link
             className="h-10 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
-            type="button"
-            onClick={() => onSolvedChange(question.questionId, true)}
+            to={`/dsa-practice/${question.questionId}`}
           >
             Solve
-          </button>
+          </Link>
         </div>
       </div>
 

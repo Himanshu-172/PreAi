@@ -1,4 +1,5 @@
 import { Question } from '../models/Question.js';
+import type { QuestionDocument } from '../models/Question.js';
 import type { questionQuerySchema } from '../validators/practiceValidators.js';
 import type { z } from 'zod';
 
@@ -55,10 +56,10 @@ export async function listQuestions(query: QuestionQuery) {
     questionsQuery.skip((effectivePage - 1) * effectiveLimit).limit(effectiveLimit);
   }
 
-  const [questions, total] = await Promise.all([questionsQuery, Question.countDocuments(filters)]);
+  const [questions, total] = await Promise.all([questionsQuery.lean(), Question.countDocuments(filters)]);
 
   return {
-    questions,
+    questions: questions.map(sanitizeQuestion),
     pagination: {
       page: effectivePage,
       limit: effectiveLimit ?? total,
@@ -68,6 +69,43 @@ export async function listQuestions(query: QuestionQuery) {
   };
 }
 
-export async function getQuestionByQuestionId(questionId: number) {
-  return Question.findOne({ questionId });
+export async function getQuestionByQuestionId(questionId: number, module?: QuestionQuery['module']) {
+  return Question.findOne({
+    questionId,
+    ...(module ? { module } : {})
+  });
+}
+
+type QuestionLike = QuestionDocument | Record<string, any>;
+
+export function sanitizeQuestion(question: QuestionLike) {
+  const maybeDocument = question as { toObject?: () => Record<string, any> };
+  const plainQuestion = typeof maybeDocument.toObject === 'function' ? maybeDocument.toObject() : question;
+  const testCases = Array.isArray(plainQuestion.testCases) ? plainQuestion.testCases : [];
+  const publicTestCases = testCases
+    .filter((testCase: any) => !testCase.isHidden)
+    .map((testCase: any, index: number) => ({
+      id: String(testCase._id ?? `public-${index + 1}`),
+      name: testCase.name,
+      input: testCase.input,
+      expectedOutput: testCase.expectedOutput
+    }));
+
+  const hiddenTestCount = testCases.filter((testCase: any) => testCase.isHidden).length;
+  const { testCases: _testCases, ...safeQuestion } = plainQuestion;
+
+  return {
+    ...safeQuestion,
+    publicTestCases,
+    hiddenTestCount
+  };
+}
+
+export async function getSafeQuestionByQuestionId(questionId: number, module?: QuestionQuery['module']) {
+  const question = await getQuestionByQuestionId(questionId, module);
+  return question ? sanitizeQuestion(question) : null;
+}
+
+export async function getDsaQuestionForExecution(questionId: number) {
+  return Question.findOne({ module: 'DSA', questionId });
 }

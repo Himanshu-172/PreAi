@@ -2,6 +2,57 @@ import mongoose, { Schema, type InferSchemaType } from 'mongoose';
 
 export const questionModules = ['DSA', 'SQL', 'Aptitude'] as const;
 export const questionDifficulties = ['Easy', 'Medium', 'Hard'] as const;
+export const codeLanguages = ['java', 'python', 'cpp', 'javascript'] as const;
+
+const starterCodeSchema = new Schema(
+  {
+    java: {
+      type: String,
+      default: ''
+    },
+    python: {
+      type: String,
+      default: ''
+    },
+    cpp: {
+      type: String,
+      default: ''
+    },
+    javascript: {
+      type: String,
+      default: ''
+    }
+  },
+  {
+    _id: false
+  }
+);
+
+const testCaseSchema = new Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    input: {
+      type: String,
+      required: true
+    },
+    expectedOutput: {
+      type: String,
+      required: true
+    },
+    isHidden: {
+      type: Boolean,
+      required: true,
+      default: false
+    }
+  },
+  {
+    _id: true
+  }
+);
 
 const questionSchema = new Schema(
   {
@@ -39,6 +90,30 @@ const questionSchema = new Schema(
       type: Number,
       required: true,
       min: 1
+    },
+    statement: {
+      type: String,
+      default: ''
+    },
+    examples: {
+      type: [String],
+      default: []
+    },
+    constraints: {
+      type: [String],
+      default: []
+    },
+    starterCode: {
+      type: starterCodeSchema,
+      default: undefined
+    },
+    functionName: {
+      type: String,
+      default: ''
+    },
+    testCases: {
+      type: [testCaseSchema],
+      default: []
     }
   },
   {

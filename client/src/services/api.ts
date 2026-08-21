@@ -60,6 +60,16 @@ api.interceptors.request.use((config) => {
 
 export type PracticeModule = 'DSA' | 'SQL' | 'Aptitude';
 export type QuestionDifficulty = 'Easy' | 'Medium' | 'Hard';
+export type CodeLanguage = 'java' | 'python' | 'cpp' | 'javascript';
+
+export type ApiPublicTestCase = {
+  id: string;
+  name: string;
+  input: string;
+  expectedOutput: string;
+};
+
+export type ApiStarterCode = Record<CodeLanguage, string>;
 
 export type ApiQuestion = {
   _id: string;
@@ -70,8 +80,36 @@ export type ApiQuestion = {
   category: string;
   companies: string[];
   estimatedTime: number;
+  statement?: string;
+  examples?: string[];
+  constraints?: string[];
+  starterCode?: Partial<ApiStarterCode>;
+  functionName?: string;
+  publicTestCases?: ApiPublicTestCase[];
+  hiddenTestCount?: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ApiCodeTestResult = {
+  id: string;
+  name: string;
+  status: 'passed' | 'failed' | 'error' | 'timeout';
+  input?: string;
+  expectedOutput?: string;
+  actualOutput?: string;
+  error?: string;
+  hidden: boolean;
+};
+
+export type ApiCodeExecutionResult = {
+  status: 'accepted' | 'wrong_answer' | 'runtime_error' | 'compilation_error' | 'time_limit_exceeded' | 'execution_error';
+  passedCount: number;
+  totalCount: number;
+  runtimeMs: number;
+  stdout: string;
+  stderr: string;
+  testResults: ApiCodeTestResult[];
 };
 
 export type ApiProgress = {
@@ -266,6 +304,12 @@ type NotesPayload = {
   notes: string;
 };
 
+type CodeExecutionPayload = {
+  language: CodeLanguage;
+  code: string;
+  testCaseIds?: string[];
+};
+
 type CreateMockInterviewPayload = {
   interviewType: MockInterviewType;
   category?: MockInterviewCategory;
@@ -294,9 +338,21 @@ export async function getAnalytics() {
   return response.data.data.analytics;
 }
 
-export async function getQuestion(id: number) {
-  const response = await api.get<ApiEnvelope<{ question: ApiQuestion }>>(`/questions/${id}`);
+export async function getQuestion(id: number, module?: PracticeModule) {
+  const response = await api.get<ApiEnvelope<{ question: ApiQuestion }>>(`/questions/${id}`, {
+    params: compactParams({ module })
+  });
   return response.data.data.question;
+}
+
+export async function runQuestionCode(id: number, payload: CodeExecutionPayload) {
+  const response = await api.post<ApiEnvelope<{ result: ApiCodeExecutionResult }>>(`/questions/${id}/run`, payload);
+  return response.data.data.result;
+}
+
+export async function submitQuestionCode(id: number, payload: CodeExecutionPayload) {
+  const response = await api.post<ApiEnvelope<{ result: ApiCodeExecutionResult; progress: ApiProgress | null }>>(`/questions/${id}/submit`, payload);
+  return response.data.data;
 }
 
 export async function getProgress(query: ModuleQuery = {}) {
